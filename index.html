@@ -576,6 +576,7 @@
       </div>
       <div class="btn-group">
         <button class="btn" id="btnToggleFav">⭐ 收藏夹模式</button>
+        <button class="btn" id="btnToggleUnanswered">⏳ 未刷题模式</button>
         <button class="btn" id="btnToggleRandom">🔀 随机模式</button>
         <button class="btn" id="btnOpenSheet">📊 答题卡大纲</button>
         <button class="btn" id="btnCustomExam">⚙️ 自定义组卷/考试</button>
@@ -707,6 +708,7 @@
     let favoriteIds = new Set(JSON.parse(localStorage.getItem('QUIZ_FAV_SET') || '[]'));
     let isFavMode = localStorage.getItem('QUIZ_FAV_MODE') === 'true';
     let isRandomMode = localStorage.getItem('QUIZ_RANDOM_MODE') === 'true';
+    let isUnansweredMode = false;
 
     let activeList = [];
     let currentIndex = 0;
@@ -782,7 +784,12 @@
     });
 
     function updateCounts() {
-      const currentPool = isFavMode ? masterBank.filter(q => favoriteIds.has(getUid(q))) : masterBank;
+      let currentPool = masterBank;
+      if (isUnansweredMode) {
+        currentPool = masterBank.filter(q => !userRecords[getUid(q)]);
+      } else if (isFavMode) {
+        currentPool = masterBank.filter(q => favoriteIds.has(getUid(q)));
+      }
 
       const counts = { ALL: currentPool.length, '单选题': 0, '多选题': 0, '判断题': 0, '不定项': 0 };
       currentPool.forEach(q => {
@@ -798,9 +805,13 @@
         else tab.textContent = `${mod} (${counts[mod] || 0})`;
       });
 
-      document.getElementById('bankSummary').textContent = isFavMode
-        ? `收藏夹共 ${currentPool.length} 题 (总库 ${masterBank.length})`
-        : `总题库 ${masterBank.length} 题 (已收藏 ${favoriteIds.size})`;
+      if (isUnansweredMode) {
+        document.getElementById('bankSummary').textContent = `未刷题库共 ${currentPool.length} 题 (总库 ${masterBank.length})`;
+      } else if (isFavMode) {
+        document.getElementById('bankSummary').textContent = `收藏夹共 ${currentPool.length} 题 (总库 ${masterBank.length})`;
+      } else {
+        document.getElementById('bankSummary').textContent = `总题库 ${masterBank.length} 题 (已收藏 ${favoriteIds.size})`;
+      }
     }
 
     function refreshUI() {
@@ -817,6 +828,11 @@
       if (favBtn) {
         favBtn.classList.toggle('active', isFavMode);
         favBtn.textContent = isFavMode ? '⭐ 收藏夹 (开)' : '⭐ 收藏夹模式';
+      }
+      const unansBtn = document.getElementById('btnToggleUnanswered');
+      if (unansBtn) {
+        unansBtn.classList.toggle('active', isUnansweredMode);
+        unansBtn.textContent = isUnansweredMode ? '⏳ 未刷题 (开)' : '⏳ 未刷题模式';
       }
       const rndBtn = document.getElementById('btnToggleRandom');
       if (rndBtn) {
@@ -838,7 +854,12 @@
       currentFilter = mod;
       document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.mod === mod));
 
-      const basePool = isFavMode ? masterBank.filter(q => favoriteIds.has(getUid(q))) : masterBank;
+      let basePool = masterBank;
+      if (isUnansweredMode) {
+        basePool = masterBank.filter(q => !userRecords[getUid(q)]);
+      } else if (isFavMode) {
+        basePool = masterBank.filter(q => favoriteIds.has(getUid(q)));
+      }
 
       if (mod === 'ALL') {
         activeList = [...basePool];
@@ -1270,10 +1291,23 @@
     }
 
     document.getElementById('btnToggleFav').addEventListener('click', () => {
+      if (isUnansweredMode) {
+        isUnansweredMode = false;
+      }
       isFavMode = !isFavMode;
       localStorage.setItem('QUIZ_FAV_MODE', isFavMode);
       refreshUI();
-      showToast(isFavMode ? '⭐ 已进入收藏夹模式' : '已切回全部大题库');
+      showToast(isFavMode ? '⭐ 已退出未刷题，进入收藏夹模式' : '已切回全部大题库');
+    });
+
+    document.getElementById('btnToggleUnanswered').addEventListener('click', () => {
+      if (isFavMode) {
+        isFavMode = false;
+        localStorage.setItem('QUIZ_FAV_MODE', 'false');
+      }
+      isUnansweredMode = !isUnansweredMode;
+      refreshUI();
+      showToast(isUnansweredMode ? '⏳ 已开启未刷题模式（答题卡灰题）' : '已退出未刷题模式，恢复全部题目');
     });
 
     document.getElementById('btnToggleRandom').addEventListener('click', () => {
