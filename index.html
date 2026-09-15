@@ -252,7 +252,7 @@
       display: flex;
       align-items: flex-start;
       gap: 14px;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: none;
       user-select: text;
     }
 
@@ -579,6 +579,7 @@
         <button class="btn" id="btnToggleRandom">🔀 随机模式</button>
         <button class="btn" id="btnOpenSheet">📊 答题卡大纲</button>
         <button class="btn" id="btnCustomExam">⚙️ 自定义组卷/考试</button>
+        <button class="btn" id="btnBrowseMode">👁️ 看题模式</button>
         <button class="btn" id="btnModeAnki">📖 Anki 速记</button>
         <button class="btn" id="btnOpenSettings">🛠️ 设置与数据</button>
         <button class="btn" id="btnClearBank">清空题库</button>
@@ -712,6 +713,7 @@
     let selectedSet = new Set();
     let isSubmitted = false;
     let isAnkiMode = false;
+    let isBrowseMode = false;
     let currentFilter = 'ALL';
     let autoAdvanceTimer = null;
 
@@ -912,16 +914,11 @@
           if (isSubmitted && !isAnkiMode) return;
           const isSingle = q.type.includes('单选') || q.type.includes('判断');
           if (isSingle) {
-            if (selectedSet.has(letter)) {
-              // 再次点击撤销选择
-              selectedSet.clear();
-              card.classList.remove('selected');
-            } else {
-              selectedSet.clear();
-              document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
-              selectedSet.add(letter);
-              card.classList.add('selected');
-            }
+            selectedSet.clear();
+            document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+            selectedSet.add(letter);
+            card.classList.add('selected');
+            handleNext();
           } else {
             // 多选/不定项自由勾选与撤销
             if (selectedSet.has(letter)) {
@@ -935,6 +932,16 @@
         });
         optContainer.appendChild(card);
       });
+
+      if (isBrowseMode) {
+        document.querySelectorAll('.option-card').forEach(c => {
+          if (q.answer && q.answer.includes(c.dataset.letter)) {
+            c.classList.add('correct');
+          }
+        });
+        if (q.analysis) analysisBox.style.display = 'block';
+        document.getElementById('qResultNotice').innerHTML = `<span style="color:#38bdf8">标准答案：${q.answer || '无'}</span>`;
+      }
     }
 
     // 判定逻辑
@@ -975,6 +982,11 @@
       const q = activeList[currentIndex];
       if (!q) return;
 
+      if (isBrowseMode) {
+        goToNextQuestion();
+        return;
+      }
+
       // Anki 模式：直接翻牌显示答案
       if (isAnkiMode) {
         if (!isSubmitted) {
@@ -1000,10 +1012,8 @@
       if (!isSubmitted) {
         const isRight = evaluateCurrent();
         if (isRight) {
-          // 正确：停留 0.5 秒后自动过渡下一题
-          autoAdvanceTimer = setTimeout(() => {
-            goToNextQuestion();
-          }, 500);
+          // 正确：零延迟直接过渡下一题，无动画卡顿
+          goToNextQuestion();
         } else {
           // 错误：停在当前页面展示错题与解析，不自动过渡
         }
@@ -1227,6 +1237,38 @@
       showToast(isAnkiMode ? '已开启 Anki 速记模式' : '已切回常规练习模式');
     });
 
+    document.getElementById('btnBrowseMode').addEventListener('click', function() {
+      isBrowseMode = !isBrowseMode;
+      this.classList.toggle('active', isBrowseMode);
+      renderCurrentQuestion();
+      showToast(isBrowseMode ? '👁️ 已开启全量看题模式' : '已切回做题模式');
+    });
+
+    function toggleCurrentAnswer() {
+      const q = activeList[currentIndex];
+      if (!q) return;
+      const analysisBox = document.getElementById('qAnalysisBox');
+      const noticeBox = document.getElementById('qResultNotice');
+      const isShown = analysisBox.style.display === 'block' || document.querySelector('.option-card.correct');
+
+      if (isShown) {
+        document.querySelectorAll('.option-card').forEach(c => {
+          c.classList.remove('correct', 'wrong', 'missed');
+          if (selectedSet.has(c.dataset.letter)) c.classList.add('selected');
+        });
+        analysisBox.style.display = 'none';
+        noticeBox.innerHTML = '';
+      } else {
+        document.querySelectorAll('.option-card').forEach(c => {
+          if (q.answer && q.answer.includes(c.dataset.letter)) {
+            c.classList.add('correct');
+          }
+        });
+        if (q.analysis) analysisBox.style.display = 'block';
+        noticeBox.innerHTML = `<span style="color:#38bdf8">标准答案：${q.answer || '无'}</span>`;
+      }
+    }
+
     document.getElementById('btnToggleFav').addEventListener('click', () => {
       isFavMode = !isFavMode;
       localStorage.setItem('QUIZ_FAV_MODE', isFavMode);
@@ -1274,18 +1316,44 @@
       }
     });
 
-    // 快捷键支持 (A-G 选选项，空格或右箭头触发下一题，左箭头上一题，G 打开大纲)
+    // 快捷键支持 (1-4/A-D 选选项，空格/回车下一题，左箭头上一题，Q 收藏，G 大纲)
     window.addEventListener('keydown', (e) => {
       if (activeList.length === 0) return;
-      const key = e.key.toUpperCase();
-      if (['A', 'B', 'C', 'D', 'E', 'F'].includes(key)) {
-        const card = document.querySelector(`.option-card[data-letter="${key}"]`);
-        if (card) card.click();
-      } else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+      if (e.target.tagName === 'INPUT') return;
+
+      const code = e.code;
+      const key = e.key ? e.key.toUpperCase() : '';
+
+      // 1-6 选项映射 (支持大键盘数字、小键盘数字、字母 A-F，按 DOM 索引精准定位)
+      let optIndex = -1;
+      if (key === '1' || code === 'Digit1' || code === 'Numpad1' || key === 'A' || code === 'KeyA') optIndex = 0;
+      else if (key === '2' || code === 'Digit2' || code === 'Numpad2' || key === 'B' || code === 'KeyB') optIndex = 1;
+      else if (key === '3' || code === 'Digit3' || code === 'Numpad3' || key === 'C' || code === 'KeyC') optIndex = 2;
+      else if (key === '4' || code === 'Digit4' || code === 'Numpad4' || key === 'D' || code === 'KeyD') optIndex = 3;
+      else if (key === '5' || code === 'Digit5' || code === 'Numpad5' || key === 'E' || code === 'KeyE') optIndex = 4;
+      else if (key === '6' || code === 'Digit6' || code === 'Numpad6' || key === 'F' || code === 'KeyF') optIndex = 5;
+
+      if (optIndex >= 0) {
+        const cards = document.querySelectorAll('.option-card');
+        if (cards[optIndex]) cards[optIndex].click();
+        return;
+      }
+
+      // 空格与回车等效：多选提交 / 下一题
+      if (key === ' ' || key === 'ENTER' || code === 'Space' || code === 'Enter' || code === 'NumpadEnter') {
+        if (key === ' ' || code === 'Space') e.preventDefault();
         handleNext();
-      } else if (e.key === 'ArrowLeft') {
+      } else if (key === 'ARROWLEFT' || code === 'ArrowLeft') {
         handlePrev();
-      } else if (key === 'G') {
+      } else if (key === 'ARROWRIGHT' || code === 'ArrowRight') {
+        handleNext();
+      } else if (key === 'ARROWUP' || code === 'ArrowUp' || key === 'ARROWDOWN' || code === 'ArrowDown') {
+        e.preventDefault();
+        toggleCurrentAnswer();
+      } else if (key === 'Q' || code === 'KeyQ') {
+        const starBtn = document.getElementById('btnStar');
+        if (starBtn) starBtn.click();
+      } else if (key === 'G' || code === 'KeyG') {
         openSheet();
       }
     });
