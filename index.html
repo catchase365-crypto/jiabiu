@@ -691,7 +691,8 @@
           <span class="config-label">数据备份与跨端迁移：</span>
           <p style="font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">可将全部题库、做题正误记录及收藏夹一键打包导出为 JSON。在手机端用浏览器打开本页面后，直接点击载入即可无缝同步刷题。</p>
           <div style="display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
-            <button class="btn accent" id="btnExportData" style="flex: 1; justify-content: center; padding: 10px;">💾 导出并下载全部数据</button>
+            <button class="btn accent" id="btnExportData" style="flex: 1; justify-content: center; padding: 10px;">💾 导出全部备份(含进度)</button>
+            <button class="btn" id="btnExportPureBank" style="flex: 1; justify-content: center; padding: 10px; background: rgba(16, 185, 129, 0.2); border-color: #10b981;">📥 仅导出纯净题库</button>
             <button class="btn" id="btnImportTrigger" style="flex: 1; justify-content: center; padding: 10px;">📂 载入备份数据文件</button>
             <input type="file" id="fileImporter" accept=".json" style="display: none;">
           </div>
@@ -1207,6 +1208,27 @@
       showToast('📦 数据包下载成功，发到手机即可直接载入！');
     });
 
+    document.getElementById('btnExportPureBank').addEventListener('click', () => {
+      if (masterBank.length === 0) {
+        showToast('当前题库为空，无法提炼');
+        return;
+      }
+      const pureBankData = masterBank.map(({ id, type, question, options, answer, analysis }) => ({
+        id,
+        type,
+        question,
+        options,
+        answer,
+        analysis
+      }));
+      const blob = new Blob([JSON.stringify(pureBankData, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '1.json';
+      a.click();
+      showToast('📥 纯净题库 1.json 下载完成！上传到 GitHub 的 data/ 目录下即可');
+    });
+
     document.getElementById('btnImportTrigger').addEventListener('click', () => fileImporter.click());
 
     fileImporter.addEventListener('change', (e) => {
@@ -1392,8 +1414,25 @@
       }
     });
 
+    // 首次进入自动拉取云端默认题库 (data/1.json)
+    async function checkAndAutoLoadRemoteBank() {
+      if (masterBank.length === 0) {
+        try {
+          const res = await fetch('./data/1.json');
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0 && data[0].question) {
+              mergeIntoBank(data);
+              showToast(`🌐 已自动加载云端题库 (${data.length} 题)`);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
     // 启动初始加载
     refreshUI();
+    checkAndAutoLoadRemoteBank();
   </script>
 </body>
 </html>
