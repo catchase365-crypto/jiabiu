@@ -581,7 +581,6 @@
         <button class="btn" id="btnOpenSheet">📊 答题卡大纲</button>
         <button class="btn" id="btnCustomExam">⚙️ 自定义组卷/考试</button>
         <button class="btn" id="btnBrowseMode">👁️ 看题模式</button>
-        <button class="btn" id="btnModeAnki">📖 Anki 速记</button>
         <button class="btn" id="btnOpenSettings">🛠️ 设置与数据</button>
         <button class="btn" id="btnClearBank">清空题库</button>
       </div>
@@ -715,7 +714,6 @@
     let currentIndex = 0;
     let selectedSet = new Set();
     let isSubmitted = false;
-    let isAnkiMode = false;
     let isBrowseMode = false;
     let currentFilter = 'ALL';
     let autoAdvanceTimer = null;
@@ -1009,21 +1007,6 @@
         return;
       }
 
-      // Anki 模式：直接翻牌显示答案
-      if (isAnkiMode) {
-        if (!isSubmitted) {
-          document.querySelectorAll('.option-card').forEach(c => {
-            if (q.answer.includes(c.dataset.letter)) c.classList.add('correct');
-          });
-          document.getElementById('qResultNotice').innerHTML = `<span style="color:#c4b5fd">标准答案：${q.answer}</span>`;
-          if (q.analysis) document.getElementById('qAnalysisBox').style.display = 'block';
-          isSubmitted = true;
-        } else {
-          goToNextQuestion();
-        }
-        return;
-      }
-
       // 情况 1：未选择任何选项（包括选中后撤销为空）-> 纯净切题，绝不弹对错
       if (selectedSet.size === 0) {
         goToNextQuestion();
@@ -1273,12 +1256,7 @@
       if (tab) applyFilter(tab.dataset.mod);
     });
 
-    document.getElementById('btnModeAnki').addEventListener('click', function() {
-      isAnkiMode = !isAnkiMode;
-      this.classList.toggle('active', isAnkiMode);
-      renderCurrentQuestion();
-      showToast(isAnkiMode ? '已开启 Anki 速记模式' : '已切回常规练习模式');
-    });
+
 
     document.getElementById('btnBrowseMode').addEventListener('click', function() {
       isBrowseMode = !isBrowseMode;
