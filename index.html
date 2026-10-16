@@ -582,7 +582,6 @@
         <button class="btn" id="btnCustomExam">⚙️ 自定义组卷/考试</button>
         <button class="btn" id="btnBrowseMode">👁️ 看题模式</button>
         <button class="btn" id="btnOpenSettings">🛠️ 设置与数据</button>
-        <button class="btn" id="btnClearBank">清空题库</button>
       </div>
     </div>
 
@@ -1338,16 +1337,6 @@
 
       localStorage.setItem('QUIZ_FAV_SET', JSON.stringify(Array.from(favoriteIds)));
       updateCounts();
-    });
-
-    document.getElementById('btnClearBank').addEventListener('click', () => {
-      if (confirm('确定清空题库和所有记录吗？')) {
-        masterBank = [];
-        userRecords = {};
-        favoriteIds.clear();
-        localStorage.clear();
-        refreshUI();
-      }
     });
 
     // 快捷键支持 (1-4/A-D 选选项，空格/回车下一题，左箭头上一题，Q 收藏，G 大纲)
